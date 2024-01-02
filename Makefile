@@ -8,3 +8,8 @@ resolve:
 run:
 	@echo "Running..."
 	@go run cmd/main.go
+
+.PHONY: test
+test:
+	@echo "Running tests..."
+	@go test -v ./...
