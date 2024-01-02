@@ -54,20 +54,20 @@ func (b *SimpleBroker) QueuePop(name string) ([]byte, error) {
 		if len(queue) == 0 {
 			return nil, ErrQueueIsEmpty
 		}
-		head := queue[0]
+		value := queue[0]
 		b.Queue[name] = queue[1:]
-		return head, nil
+		return value, nil
 	} else {
 		return nil, ErrQueueNotExists
 	}
 }
 
-func (b *SimpleBroker) Pop() (string, []byte, error) {
-	for name, _ := range b.Queue {
-		head, err := b.QueuePop(name)
-		if err == nil {
-			return name, head, nil
+func (b *SimpleBroker) Front() (string, []byte, error) {
+	for name, q := range b.Queue {
+		if !b.IsMasterQueue[name] || len(q) == 0 {
+			continue
 		}
+		return name, q[0], nil
 	}
 	return "", nil, ErrNoKeyFound
 }
