@@ -32,5 +32,5 @@ jobs:
 
       - name: 'Build Inventory Image'
         run: |
-          docker build . --tag ghcr.io/sad-project-fall-2023/broker:${{GITHUB_SHA}}
-          docker push ghcr.io/sad-project-fall-2023/broker:${{GITHUB_SHA}}
+          docker build . --tag ghcr.io/sad-project-fall-2023/broker:${{github.sha}}
+          docker push ghcr.io/sad-project-fall-2023/broker:${{github.sha}}
