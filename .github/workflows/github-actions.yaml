@@ -4,9 +4,11 @@ env:
   DOTNET_VERSION: '6.0.x'
 
 on:
-  push:
-    branches: [ main ]
   workflow_dispatch:
+  push:
+    branches: 
+      - main
+  pull_request:
 
 jobs:
   build:
@@ -24,6 +26,7 @@ jobs:
         run: make build
 
   push-store-image:
+    needs: build
     runs-on: ubuntu-latest
     steps:
       - name: 'Checkout GitHub Action'
