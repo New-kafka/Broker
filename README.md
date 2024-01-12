@@ -5,5 +5,6 @@ Broker is responsible for maintaining the state of queues just like Kafka.
 
 ```bash
 make resolve
-make run
+make build
+
 ```
