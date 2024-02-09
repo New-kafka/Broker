@@ -1,10 +1,24 @@
 package broker
 
-import "errors"
+import (
+	"database/sql"
+	"errors"
+	_ "github.com/lib/pq"
+	"log"
+)
 
-type SimpleBroker struct {
-	Queue         map[string][][]byte
-	IsMasterQueue map[string]bool
+type Broker struct {
+	Database *sql.DB
+}
+
+func NewBroker() *Broker {
+	db, err := sql.Open("postgres", "user=postgres password=postgres dbname=postgres sslmode=disable")
+	if err != nil {
+		log.Fatal(err)
+	}
+	return &Broker{
+		Database: db,
+	}
 }
 
 var (
@@ -14,60 +28,27 @@ var (
 	ErrNoKeyFound         = errors.New("no key found")
 )
 
-func NewBroker() Broker {
-	return &SimpleBroker{
-		Queue:         make(map[string][][]byte),
-		IsMasterQueue: make(map[string]bool),
-	}
-}
-
-func (b *SimpleBroker) AddQueue(name string, isMaster bool) error {
-	if _, ok := b.Queue[name]; !ok {
-		b.Queue[name] = [][]byte{}
-		b.IsMasterQueue[name] = isMaster
-	} else {
-		return ErrQueueAlreadyExists
-	}
+// AddQueue: Add a new queue name to the broker
+func (b *Broker) AddQueue(name string, isMaster bool) error {
 	return nil
 }
 
-func (b *SimpleBroker) SetQueueMaster(name string, masterStatus bool) error {
-	if _, ok := b.Queue[name]; ok {
-		b.IsMasterQueue[name] = masterStatus
-	} else {
-		return ErrQueueNotExists
-	}
+// SetQueueMaster: Set the master status of a queue
+func (b *Broker) SetQueueMaster(name string, masterStatus bool) error {
 	return nil
 }
 
-func (b *SimpleBroker) QueuePush(name string, value []byte) error {
-	if _, ok := b.Queue[name]; ok {
-		b.Queue[name] = append(b.Queue[name], value)
-	} else {
-		return ErrQueueNotExists
-	}
+// QueuePush: Push a value to a queue
+func (b *Broker) QueuePush(name string, value []byte) error {
 	return nil
 }
 
-func (b *SimpleBroker) QueuePop(name string) ([]byte, error) {
-	if queue, ok := b.Queue[name]; ok {
-		if len(queue) == 0 {
-			return nil, ErrQueueIsEmpty
-		}
-		value := queue[0]
-		b.Queue[name] = queue[1:]
-		return value, nil
-	} else {
-		return nil, ErrQueueNotExists
-	}
+// QueuePop: Pop a value from a queue
+func (b *Broker) QueuePop(name string) ([]byte, error) {
+	return nil, nil
 }
 
-func (b *SimpleBroker) Front() (string, []byte, error) {
-	for name, q := range b.Queue {
-		if !b.IsMasterQueue[name] || len(q) == 0 {
-			continue
-		}
-		return name, q[0], nil
-	}
-	return "", nil, ErrNoKeyFound
+// Front: Get the front value of any queue that is a master and not empty
+func (b *Broker) Front() (string, []byte, error) {
+	return "", nil, nil
 }

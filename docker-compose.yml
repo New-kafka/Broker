@@ -1,8 +1,14 @@
 version: '3.8'
 
 services:
-  broker:
-    image: broker:0.1.0
-    container_name: broker
+  postgres:
+    image: postgres:13.3
+    container_name: postgres-broker
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
     ports:
-      - "8080:8080"
+      - "5432:5432"
+    volumes:
+        - ./data:/var/lib/postgresql/data
