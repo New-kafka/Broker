@@ -3,8 +3,9 @@ package broker
 import (
 	"database/sql"
 	"errors"
-	_ "github.com/lib/pq"
 	"log"
+
+	_ "github.com/lib/pq"
 )
 
 type Broker struct {
@@ -45,7 +46,6 @@ func (b *Broker) AddQueue(name string, isMaster bool) error {
 		return err
 	}
 
-	// create queue table 
 	_, err = b.Database.Exec("CREATE TABLE IF NOT EXISTS " + name + " (id SERIAL PRIMARY KEY, value BYTEA)")
 	if err != nil {
 		return err
@@ -76,9 +76,8 @@ func (b *Broker) QueuePush(name string, value []byte) error {
 	if err == sql.ErrNoRows {
 		return ErrQueueNotExists
 	}
-	
 
-	_, err = b.Database.Exec("INSERT INTO " + name + " (value) VALUES ($1)", value)
+	_, err = b.Database.Exec("INSERT INTO "+name+" (value) VALUES ($1)", value)
 	if err != nil {
 		return err
 	}
@@ -103,7 +102,7 @@ func (b *Broker) QueuePop(name string) ([]byte, error) {
 
 	// pop value
 	var value []byte
-	err = b.Database.QueryRow("DELETE FROM " + name + " WHERE id = $1 RETURNING value", id).Scan(&value)
+	err = b.Database.QueryRow("DELETE FROM "+name+" WHERE id = $1 RETURNING value", id).Scan(&value)
 	if err != nil {
 		return nil, err
 	}
@@ -128,9 +127,53 @@ func (b *Broker) Front() (string, []byte, error) {
 
 	// get value
 	var value []byte
-	err = b.Database.QueryRow("SELECT value FROM " + name + " WHERE id = $1", id).Scan(&value)
+	err = b.Database.QueryRow("SELECT value FROM "+name+" WHERE id = $1", id).Scan(&value)
 	if err != nil {
 		return "", nil, err
 	}
 	return name, value, nil
+}
+
+// import: add new queue with elements to queues
+func (b *Broker) Import(name string, isMaster bool, values [][]byte) error {
+	err := b.AddQueue(name, isMaster)
+	if err != nil {
+		return err
+	}
+	for _, value := range values {
+		err = b.QueuePush(name, value)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// export: get all elements from a queue
+func (b *Broker) Export(name string) ([][]byte, error) {
+	// check queue exist
+	queueName := ""
+	err := b.Database.QueryRow("SELECT name FROM queues WHERE name = $1", name).Scan(&queueName)
+	if err == sql.ErrNoRows {
+		return nil, ErrQueueNotExists
+	}
+
+	// get all values in order of id
+	rows, err := b.Database.Query("SELECT value FROM " + name + " ORDER BY id")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	// get all values
+	var values [][]byte
+	for rows.Next() {
+		var value []byte
+		err = rows.Scan(&value)
+		if err != nil {
+			return nil, err
+		}
+		values = append(values, value)
+	}
+	return values, nil
 }
