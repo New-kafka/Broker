@@ -3,8 +3,8 @@ package http_server
 import (
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/viper"
-	"mai/internal/broker"
-	"mai/internal/types"
+	"github.com/new-kafka/broker/internal/broker"
+	"github.com/new-kafka/broker/internal/types"
 )
 
 type GinServer struct {

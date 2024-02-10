@@ -1,4 +1,4 @@
-module mai
+module github.com/new-kafka/broker
 
 go 1.21.5
 
