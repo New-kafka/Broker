@@ -46,3 +46,30 @@ func TestSimpleBroker_Front(t *testing.T) {
 	assert.Equal(t, "test", queueName)
 	assert.Equal(t, []byte("test-message"), value)
 }
+
+func TestSimpleBroker_Export(t *testing.T) {
+	startDatabase()
+	broker := NewBroker()
+	err := broker.AddQueue("test", true)
+	assert.NoError(t, err)
+	err = broker.QueuePush("test", []byte("test-message1"))
+	assert.NoError(t, err)
+	err = broker.QueuePush("test", []byte("test-message2"))
+	assert.NoError(t, err)
+
+	values, err := broker.Export("test")
+	assert.NoError(t, err)
+	assert.Equal(t, [][]byte{[]byte("test-message1"), []byte("test-message2")}, values)
+}
+
+func TestSimpleBroker_Import(t *testing.T) {
+	startDatabase()
+	broker := NewBroker()
+
+	err := broker.Import("test", true, [][]byte{[]byte("test-message1"), []byte("test-message2")})
+	assert.NoError(t, err)
+
+	values, err := broker.Export("test")
+	assert.NoError(t, err)
+	assert.Equal(t, [][]byte{[]byte("test-message1"), []byte("test-message2")}, values)
+}
