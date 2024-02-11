@@ -12,3 +12,13 @@ type QueuePushRequest struct {
 type QueueSetMasterRequest struct {
 	MasterStatus bool `json:"master_status" binding:"required" validate:"oneof=true false"`
 }
+
+type ExportRequest struct {
+	Key string `json:"key" binding:"required"`
+}
+
+type ImportRequest struct {
+	Key      string   `json:"key" binding:"required"`
+	Data     [][]byte `json:"data" binding:"required"`
+	IsMaster bool     `json:"is_master" binding:"required" validate:"oneof=true false"`
+}

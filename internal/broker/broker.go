@@ -3,8 +3,8 @@ package broker
 import (
 	"database/sql"
 	"errors"
+	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
-	"log"
 
 	_ "github.com/lib/pq"
 )
@@ -23,13 +23,42 @@ func NewBroker() *Broker {
 	}
 	var postgres postgresConfig
 	if err := viper.UnmarshalKey("postgres", &postgres); err != nil {
-		log.Fatal(err.Error())
+		log.WithFields(log.Fields{
+			"host":   postgres.Host,
+			"port":   postgres.Port,
+			"dbname": postgres.Dbname,
+		}).Fatal(err.Error())
 	}
+	log.WithFields(log.Fields{
+		"host":   postgres.Host,
+		"port":   postgres.Port,
+		"dbname": postgres.Dbname,
+		"user":   postgres.User,
+	}).Debug("Read postgres configuration successfully")
+
 	conninfo := "host=" + postgres.Host + " port=" + postgres.Port + " user=" + postgres.User + " password=" + postgres.Password + " dbname=" + postgres.Dbname + " sslmode=disable"
 	db, err := sql.Open("postgres", conninfo)
 	if err != nil {
-		log.Fatal(err)
+		log.WithFields(log.Fields{
+			"host":   postgres.Host,
+			"port":   postgres.Port,
+			"dbname": postgres.Dbname,
+		}).Fatal(err.Error())
 	}
+	err = db.Ping()
+	if err != nil {
+		log.WithFields(log.Fields{
+			"host":   postgres.Host,
+			"port":   postgres.Port,
+			"dbname": postgres.Dbname,
+		}).Fatal(err.Error())
+	}
+	log.WithFields(log.Fields{
+		"host":   postgres.Host,
+		"port":   postgres.Port,
+		"dbname": postgres.Dbname,
+	}).Debugf("Connected to database successfully")
+
 	_, err = db.Exec("CREATE TABLE IF NOT EXISTS queues (name TEXT PRIMARY KEY, is_master BOOLEAN)")
 	if err != nil {
 		log.Fatal(err)
@@ -147,7 +176,7 @@ func (b *Broker) Front() (string, []byte, error) {
 	return name, value, nil
 }
 
-// import: add new queue with elements to queues
+// Import: Add a queue and push values to it
 func (b *Broker) Import(name string, isMaster bool, values [][]byte) error {
 	err := b.AddQueue(name, isMaster)
 	if err != nil {
@@ -162,7 +191,7 @@ func (b *Broker) Import(name string, isMaster bool, values [][]byte) error {
 	return nil
 }
 
-// export: get all elements from a queue
+// Export: Get all elements from a queue
 func (b *Broker) Export(name string) ([][]byte, error) {
 	// check queue exist
 	queueName := ""
