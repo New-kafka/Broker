@@ -1,10 +1,9 @@
 package main
 
 import (
-	"github.com/spf13/viper"
 	"github.com/new-kafka/broker/internal/broker"
-	// http_server "github.com/new-kafka/broker/internal/http-server"
-	"fmt"
+	http_server "github.com/new-kafka/broker/internal/http-server"
+	"github.com/spf13/viper"
 )
 
 func init() {
