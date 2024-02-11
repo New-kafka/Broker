@@ -3,6 +3,7 @@ package broker
 import (
 	"database/sql"
 	"errors"
+	"github.com/spf13/viper"
 	"log"
 
 	_ "github.com/lib/pq"
@@ -13,7 +14,19 @@ type Broker struct {
 }
 
 func NewBroker() *Broker {
-	db, err := sql.Open("postgres", "user=postgres password=postgres dbname=postgres sslmode=disable port=5433")
+	type postgresConfig struct {
+		Host     string `yaml:"host" binding:"required"`
+		Port     string `yaml:"port" binding:"required"`
+		User     string `yaml:"user" binding:"required"`
+		Password string `yaml:"password" binding:"required"`
+		Dbname   string `yaml:"dbname" binding:"required"`
+	}
+	var postgres postgresConfig
+	if err := viper.UnmarshalKey("postgres", &postgres); err != nil {
+		log.Fatal(err.Error())
+	}
+	conninfo := "host=" + postgres.Host + " port=" + postgres.Port + " user=" + postgres.User + " password=" + postgres.Password + " dbname=" + postgres.Dbname + " sslmode=disable"
+	db, err := sql.Open("postgres", conninfo)
 	if err != nil {
 		log.Fatal(err)
 	}
