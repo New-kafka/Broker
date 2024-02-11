@@ -2,9 +2,9 @@ package http_server
 
 import (
 	"github.com/gin-gonic/gin"
-	"github.com/spf13/viper"
 	"github.com/new-kafka/broker/internal/broker"
 	"github.com/new-kafka/broker/internal/types"
+	"github.com/spf13/viper"
 )
 
 type GinServer struct {
@@ -32,7 +32,10 @@ func (s *GinServer) registerRoutes() {
 	s.gin.POST("/queue/:queue_name/set_master", s.QueueSetMaster)
 	s.gin.POST("/queue/:queue_name/push", s.QueuePush)
 	s.gin.POST("/queue/:queue_name/pop", s.QueuePop)
+	s.gin.POST("/export", s.Export)
+	s.gin.GET("/import", s.Import)
 	s.gin.GET("/front", s.Front)
+
 	s.gin.GET(viper.GetString("health_check_path"), func(c *gin.Context) {
 		c.JSON(200, gin.H{"message": "ok"})
 	})
@@ -91,6 +94,33 @@ func (s *GinServer) QueueSetMaster(c *gin.Context) {
 		return
 	}
 	c.JSON(200, gin.H{"message": "ok"})
+}
+
+func (s *GinServer) Import(c *gin.Context) {
+	req := &types.ImportRequest{}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	if err := (*s.broker).Import(req.Key, req.IsMaster, req.Data); err != nil {
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(200, gin.H{"message": "ok"})
+}
+
+func (s *GinServer) Export(c *gin.Context) {
+	req := &types.ExportRequest{}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	res, err := (*s.broker).Export(req.Key)
+	if err != nil {
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(200, gin.H{"message": "ok", "value": res})
 }
 
 func (s *GinServer) Front(c *gin.Context) {
