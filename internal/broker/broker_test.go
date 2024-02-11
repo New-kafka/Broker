@@ -1,5 +1,7 @@
 package broker
 
+//ToDO: Add tests for ci/cd pipeline
+
 // run with sudo
 import (
 	"os/exec"
@@ -66,7 +68,7 @@ func TestSimpleBroker_Import(t *testing.T) {
 	startDatabase()
 	broker := NewBroker()
 
-	err := broker.Import("test", true, [][]byte{[]byte("test-message1"), []byte("test-message2")})
+	err = broker.Import("test", true, [][]byte{[]byte("test-message1"), []byte("test-message2")})
 	assert.NoError(t, err)
 
 	values, err := broker.Export("test")
