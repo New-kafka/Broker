@@ -1,12 +1,14 @@
-name: Deploy Image to GHCR
+name: CI - Build Image
 
 env:
   DOTNET_VERSION: '6.0.x'
 
 on:
-  push:
-    branches: [ main ]
   workflow_dispatch:
+  push:
+    branches:
+      - main
+  pull_request:
 
 jobs:
   build:
@@ -20,23 +22,22 @@ jobs:
         with:
           go-version: '^1.21.5'
 
+      - name: 'Go Tidy'
+        run: make resolve
+
       - name: 'Build Binary'
         run: make build
-
-  push-store-image:
-    runs-on: ubuntu-latest
-    steps:
-      - name: 'Checkout GitHub Action'
-        uses: actions/checkout@main
 
       - name: 'Login to GitHub Container Registry'
         uses: docker/login-action@v1
         with:
           registry: ghcr.io
-          username: ${{github.actor}}
-          password: ${{secrets.GH_TOKEN}}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GH_TOKEN }}
 
       - name: 'Build Inventory Image'
         run: |
-          docker build . --tag ghcr.io/sad-project-fall-2023/broker:${{github.sha}}
-          docker push ghcr.io/sad-project-fall-2023/broker:${{github.sha}}
+          docker build -t ghcr.io/new-kafka/broker:${{ github.sha }} .
+          docker tag ghcr.io/new-kafka/broker:${{ github.sha }} ghcr.io/new-kafka/broker:latest
+          docker push ghcr.io/new-kafka/broker:${{ github.sha }}
+          docker push ghcr.io/new-kafka/broker:latest
