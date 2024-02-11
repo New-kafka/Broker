@@ -1,16 +1,16 @@
 package types
 
-type AddQueueRequest struct {
-	QueueName string `json:"queue_name" binding:"required" validate:"min=1,max=100"`
-	IsMaster  bool   `json:"is_master" binding:"required" validate:"oneof=true false"`
+type AddKeyRequest struct {
+	Key      string `json:"key"`
+	IsMaster bool   `json:"isMaster"`
 }
 
-type QueuePushRequest struct {
-	Value []byte `json:"value" binding:"required"`
+type KeyPushRequest struct {
+	Value []byte `json:"value"`
 }
 
-type QueueSetMasterRequest struct {
-	MasterStatus bool `json:"master_status" binding:"required" validate:"oneof=true false"`
+type KeySetMasterRequest struct {
+	MasterStatus bool `json:"masterStatus"`
 }
 
 type ExportRequest struct {
@@ -18,7 +18,7 @@ type ExportRequest struct {
 }
 
 type ImportRequest struct {
-	Key      string   `json:"key" binding:"required"`
-	Data     [][]byte `json:"data" binding:"required"`
-	IsMaster bool     `json:"is_master" binding:"required" validate:"oneof=true false"`
+	Key      string   `json:"key"`
+	Data     [][]byte `json:"data"`
+	IsMaster bool     `json:"isMaster"`
 }
