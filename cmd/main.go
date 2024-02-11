@@ -1,12 +1,24 @@
 package main
 
 import (
-	"mai/internal/broker"
-	http_server "mai/internal/http-server"
+	"github.com/spf13/viper"
+	"github.com/new-kafka/broker/internal/broker"
+	// http_server "github.com/new-kafka/broker/internal/http-server"
+	"fmt"
 )
 
+func init() {
+	viper.SetConfigName("config")
+	viper.AddConfigPath("./config")
+
+	err := viper.ReadInConfig()
+	if err != nil {
+		panic(err)
+	}
+}
+
 func main() {
-	broker := broker.NewBroker()
-	gs := http_server.NewGinServer(&broker)
+	b := broker.NewBroker()
+	gs := http_server.NewGinServer(b)
 	gs.Run()
 }

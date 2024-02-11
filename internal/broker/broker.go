@@ -1,10 +1,42 @@
 package broker
 
-import "errors"
+import (
+	"database/sql"
+	"errors"
+	"github.com/spf13/viper"
+	"log"
 
-type SimpleBroker struct {
-	Queue         map[string][][]byte
-	IsMasterQueue map[string]bool
+	_ "github.com/lib/pq"
+)
+
+type Broker struct {
+	Database *sql.DB
+}
+
+func NewBroker() *Broker {
+	type postgresConfig struct {
+		Host     string `yaml:"host" binding:"required"`
+		Port     string `yaml:"port" binding:"required"`
+		User     string `yaml:"user" binding:"required"`
+		Password string `yaml:"password" binding:"required"`
+		Dbname   string `yaml:"dbname" binding:"required"`
+	}
+	var postgres postgresConfig
+	if err := viper.UnmarshalKey("postgres", &postgres); err != nil {
+		log.Fatal(err.Error())
+	}
+	conninfo := "host=" + postgres.Host + " port=" + postgres.Port + " user=" + postgres.User + " password=" + postgres.Password + " dbname=" + postgres.Dbname + " sslmode=disable"
+	db, err := sql.Open("postgres", conninfo)
+	if err != nil {
+		log.Fatal(err)
+	}
+	_, err = db.Exec("CREATE TABLE IF NOT EXISTS queues (name TEXT PRIMARY KEY, is_master BOOLEAN)")
+	if err != nil {
+		log.Fatal(err)
+	}
+	return &Broker{
+		Database: db,
+	}
 }
 
 var (
@@ -14,60 +46,147 @@ var (
 	ErrNoKeyFound         = errors.New("no key found")
 )
 
-func NewBroker() Broker {
-	return &SimpleBroker{
-		Queue:         make(map[string][][]byte),
-		IsMasterQueue: make(map[string]bool),
-	}
-}
-
-func (b *SimpleBroker) AddQueue(name string, isMaster bool) error {
-	if _, ok := b.Queue[name]; !ok {
-		b.Queue[name] = [][]byte{}
-		b.IsMasterQueue[name] = isMaster
-	} else {
+// AddQueue: Add a new queue name to the broker
+func (b *Broker) AddQueue(name string, isMaster bool) error {
+	queueName := ""
+	err := b.Database.QueryRow("SELECT name FROM queues WHERE name = $1", name).Scan(&queueName)
+	if err != sql.ErrNoRows {
 		return ErrQueueAlreadyExists
 	}
-	return nil
-}
 
-func (b *SimpleBroker) SetQueueMaster(name string, masterStatus bool) error {
-	if _, ok := b.Queue[name]; ok {
-		b.IsMasterQueue[name] = masterStatus
-	} else {
-		return ErrQueueNotExists
+	_, err = b.Database.Exec("INSERT INTO queues (name, is_master) VALUES ($1, $2)", name, isMaster)
+	if err != nil {
+		return err
+	}
+
+	_, err = b.Database.Exec("CREATE TABLE IF NOT EXISTS " + name + " (id SERIAL PRIMARY KEY, value BYTEA)")
+	if err != nil {
+		return err
 	}
 	return nil
 }
 
-func (b *SimpleBroker) QueuePush(name string, value []byte) error {
-	if _, ok := b.Queue[name]; ok {
-		b.Queue[name] = append(b.Queue[name], value)
-	} else {
+// SetQueueMaster: Set the master status of a queue
+func (b *Broker) SetQueueMaster(name string, masterStatus bool) error {
+	queueName := ""
+	err := b.Database.QueryRow("SELECT name FROM queues WHERE name = $1", name).Scan(&queueName)
+	if err == sql.ErrNoRows {
 		return ErrQueueNotExists
+	}
+
+	_, err = b.Database.Exec("UPDATE queues SET is_master = $1 WHERE name = $2", masterStatus, name)
+	if err != nil {
+		return err
 	}
 	return nil
 }
 
-func (b *SimpleBroker) QueuePop(name string) ([]byte, error) {
-	if queue, ok := b.Queue[name]; ok {
-		if len(queue) == 0 {
-			return nil, ErrQueueIsEmpty
-		}
-		value := queue[0]
-		b.Queue[name] = queue[1:]
-		return value, nil
-	} else {
+// QueuePush: Push a value to a queue
+func (b *Broker) QueuePush(name string, value []byte) error {
+	// check queue not exists
+	queueName := ""
+	err := b.Database.QueryRow("SELECT name FROM queues WHERE name = $1", name).Scan(&queueName)
+	if err == sql.ErrNoRows {
+		return ErrQueueNotExists
+	}
+
+	_, err = b.Database.Exec("INSERT INTO "+name+" (value) VALUES ($1)", value)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// QueuePop: Pop a value from a queue
+func (b *Broker) QueuePop(name string) ([]byte, error) {
+	// check queue exist
+	queueName := ""
+	err := b.Database.QueryRow("SELECT name FROM queues WHERE name = $1", name).Scan(&queueName)
+	if err == sql.ErrNoRows {
 		return nil, ErrQueueNotExists
 	}
+
+	// check queue is empty
+	var id int
+	err = b.Database.QueryRow("SELECT id FROM " + name + " ORDER BY id LIMIT 1").Scan(&id)
+	if err == sql.ErrNoRows {
+		return nil, ErrQueueIsEmpty
+	}
+
+	// pop value
+	var value []byte
+	err = b.Database.QueryRow("DELETE FROM "+name+" WHERE id = $1 RETURNING value", id).Scan(&value)
+	if err != nil {
+		return nil, err
+	}
+	return value, nil
 }
 
-func (b *SimpleBroker) Front() (string, []byte, error) {
-	for name, q := range b.Queue {
-		if !b.IsMasterQueue[name] || len(q) == 0 {
-			continue
-		}
-		return name, q[0], nil
+// Front: Get the front value of any queue that is a master and not empty
+func (b *Broker) Front() (string, []byte, error) {
+	//find the master queue
+	var name string
+	err := b.Database.QueryRow("SELECT name FROM queues WHERE is_master = true").Scan(&name)
+	if err == sql.ErrNoRows {
+		return "", nil, ErrNoKeyFound
 	}
-	return "", nil, ErrNoKeyFound
+
+	// check queue is empty
+	var id int
+	err = b.Database.QueryRow("SELECT id FROM " + name + " ORDER BY id LIMIT 1").Scan(&id)
+	if err == sql.ErrNoRows {
+		return "", nil, ErrQueueIsEmpty
+	}
+
+	// get value
+	var value []byte
+	err = b.Database.QueryRow("SELECT value FROM "+name+" WHERE id = $1", id).Scan(&value)
+	if err != nil {
+		return "", nil, err
+	}
+	return name, value, nil
+}
+
+// import: add new queue with elements to queues
+func (b *Broker) Import(name string, isMaster bool, values [][]byte) error {
+	err := b.AddQueue(name, isMaster)
+	if err != nil {
+		return err
+	}
+	for _, value := range values {
+		err = b.QueuePush(name, value)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// export: get all elements from a queue
+func (b *Broker) Export(name string) ([][]byte, error) {
+	// check queue exist
+	queueName := ""
+	err := b.Database.QueryRow("SELECT name FROM queues WHERE name = $1", name).Scan(&queueName)
+	if err == sql.ErrNoRows {
+		return nil, ErrQueueNotExists
+	}
+
+	// get all values in order of id
+	rows, err := b.Database.Query("SELECT value FROM " + name + " ORDER BY id")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	// get all values
+	var values [][]byte
+	for rows.Next() {
+		var value []byte
+		err = rows.Scan(&value)
+		if err != nil {
+			return nil, err
+		}
+		values = append(values, value)
+	}
+	return values, nil
 }

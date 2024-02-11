@@ -2,7 +2,9 @@ package http_server
 
 import (
 	"github.com/gin-gonic/gin"
-	"mai/internal/broker"
+	"github.com/spf13/viper"
+	"github.com/new-kafka/broker/internal/broker"
+	"github.com/new-kafka/broker/internal/types"
 )
 
 type GinServer struct {
@@ -15,8 +17,14 @@ func NewGinServer(broker *broker.Broker) *GinServer {
 		broker: broker,
 		gin:    gin.Default(),
 	}
+	gs.registerMiddlewares()
 	gs.registerRoutes()
 	return gs
+}
+
+func (s *GinServer) registerMiddlewares() {
+	s.gin.Use(gin.Logger())
+	s.gin.Use(gin.Recovery())
 }
 
 func (s *GinServer) registerRoutes() {
@@ -25,27 +33,17 @@ func (s *GinServer) registerRoutes() {
 	s.gin.POST("/queue/:queue_name/push", s.QueuePush)
 	s.gin.POST("/queue/:queue_name/pop", s.QueuePop)
 	s.gin.GET("/front", s.Front)
+	s.gin.GET(viper.GetString("health_check_path"), func(c *gin.Context) {
+		c.JSON(200, gin.H{"message": "ok"})
+	})
 }
 
 func (s *GinServer) Run() {
-	s.gin.Run()
-}
-
-type AddQueueRequest struct {
-	QueueName string `json:"queue_name"`
-	IsMaster  bool   `json:"is_master"`
-}
-
-type QueuePushRequest struct {
-	Value []byte `json:"value"`
-}
-
-type QueueSetMasterRequest struct {
-	MasterStatus bool `json:"master_status"`
+	s.gin.Run("localhost:" + viper.GetString("port"))
 }
 
 func (s *GinServer) AddQueue(c *gin.Context) {
-	req := &AddQueueRequest{}
+	req := &types.AddQueueRequest{}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
@@ -59,7 +57,7 @@ func (s *GinServer) AddQueue(c *gin.Context) {
 
 func (s *GinServer) QueuePush(c *gin.Context) {
 	queueName := c.Param("queue_name")
-	data := &QueuePushRequest{}
+	data := &types.QueuePushRequest{}
 	if err := c.ShouldBindJSON(data); err != nil {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
@@ -83,7 +81,7 @@ func (s *GinServer) QueuePop(c *gin.Context) {
 
 func (s *GinServer) QueueSetMaster(c *gin.Context) {
 	queueName := c.Param("queue_name")
-	data := &QueueSetMasterRequest{}
+	data := &types.QueueSetMasterRequest{}
 	if err := c.ShouldBindJSON(&data); err != nil {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
