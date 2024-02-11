@@ -4,6 +4,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/new-kafka/broker/internal/broker"
 	"github.com/new-kafka/broker/internal/types"
+	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 )
 
@@ -17,21 +18,15 @@ func NewGinServer(broker *broker.Broker) *GinServer {
 		broker: broker,
 		gin:    gin.Default(),
 	}
-	gs.registerMiddlewares()
 	gs.registerRoutes()
 	return gs
 }
 
-func (s *GinServer) registerMiddlewares() {
-	s.gin.Use(gin.Logger())
-	s.gin.Use(gin.Recovery())
-}
-
 func (s *GinServer) registerRoutes() {
-	s.gin.POST("/queue", s.AddQueue)
-	s.gin.POST("/queue/:queue_name/set_master", s.QueueSetMaster)
-	s.gin.POST("/queue/:queue_name/push", s.QueuePush)
-	s.gin.POST("/queue/:queue_name/pop", s.QueuePop)
+	s.gin.POST("/key", s.AddKey)
+	s.gin.POST("/key/:key/set_master", s.KeySetMaster)
+	s.gin.POST("/key/:key/push", s.KeyPush)
+	s.gin.POST("/key/:key/pop", s.KeyPop)
 	s.gin.POST("/export", s.Export)
 	s.gin.GET("/import", s.Import)
 	s.gin.GET("/front", s.Front)
@@ -42,39 +37,51 @@ func (s *GinServer) registerRoutes() {
 }
 
 func (s *GinServer) Run() {
-	s.gin.Run("localhost:" + viper.GetString("port"))
+	s.gin.Run("0.0.0.0:" + viper.GetString("port"))
 }
 
-func (s *GinServer) AddQueue(c *gin.Context) {
-	req := &types.AddQueueRequest{}
+func (s *GinServer) AddKey(c *gin.Context) {
+	req := &types.AddKeyRequest{}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
-	if err := (*s.broker).AddQueue(req.QueueName, req.IsMaster); err != nil {
+	log.WithFields(log.Fields{
+		"key":    req.Key,
+		"master": req.IsMaster,
+	}).Debug("Add a new key to the broker")
+	if err := (*s.broker).AddKey(req.Key, req.IsMaster); err != nil {
+		log.WithFields(log.Fields{
+			"key":    req.Key,
+			"master": req.IsMaster,
+		}).Warnf("Couldn't add key to the broker: %s", err.Error())
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(200, gin.H{"message": "ok", "queue_name": req.QueueName})
+	log.WithFields(log.Fields{
+		"key":    req.Key,
+		"master": req.IsMaster,
+	}).Info("Key added to the broker successfully")
+	c.JSON(200, gin.H{"message": "ok", "key": req.Key})
 }
 
-func (s *GinServer) QueuePush(c *gin.Context) {
-	queueName := c.Param("queue_name")
-	data := &types.QueuePushRequest{}
+func (s *GinServer) KeyPush(c *gin.Context) {
+	key := c.Param("key")
+	data := &types.KeyPushRequest{}
 	if err := c.ShouldBindJSON(data); err != nil {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
-	if err := (*s.broker).QueuePush(queueName, data.Value); err != nil {
-		c.JSON(400, gin.H{"error": err.Error(), "queue_name": queueName})
+	if err := (*s.broker).KeyPush(key, data.Value); err != nil {
+		c.JSON(400, gin.H{"error": err.Error(), "key": key})
 		return
 	}
 	c.JSON(200, gin.H{"message": "ok"})
 }
 
-func (s *GinServer) QueuePop(c *gin.Context) {
-	queueName := c.Param("queue_name")
-	value, err := (*s.broker).QueuePop(queueName)
+func (s *GinServer) KeyPop(c *gin.Context) {
+	key := c.Param("key")
+	value, err := (*s.broker).KeyPop(key)
 	if err != nil {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
@@ -82,14 +89,14 @@ func (s *GinServer) QueuePop(c *gin.Context) {
 	c.JSON(200, gin.H{"message": "ok", "value": value})
 }
 
-func (s *GinServer) QueueSetMaster(c *gin.Context) {
-	queueName := c.Param("queue_name")
-	data := &types.QueueSetMasterRequest{}
+func (s *GinServer) KeySetMaster(c *gin.Context) {
+	key := c.Param("key")
+	data := &types.KeySetMasterRequest{}
 	if err := c.ShouldBindJSON(&data); err != nil {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
-	if err := (*s.broker).SetQueueMaster(queueName, data.MasterStatus); err != nil {
+	if err := (*s.broker).SetKeyMaster(key, data.MasterStatus); err != nil {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
@@ -124,10 +131,10 @@ func (s *GinServer) Export(c *gin.Context) {
 }
 
 func (s *GinServer) Front(c *gin.Context) {
-	queueName, value, err := (*s.broker).Front()
+	key, value, err := (*s.broker).Front()
 	if err != nil {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(200, gin.H{"message": "ok", "queue_name": queueName, "value": value})
+	c.JSON(200, gin.H{"message": "ok", "key": key, "value": value})
 }
