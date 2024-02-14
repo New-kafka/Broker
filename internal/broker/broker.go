@@ -6,10 +6,12 @@ import (
 	_ "github.com/lib/pq"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
+	"sync"
 )
 
 type Broker struct {
 	Database *sql.DB
+	Mutex    *sync.Mutex
 }
 
 func NewBroker() *Broker {
@@ -64,6 +66,7 @@ func NewBroker() *Broker {
 	}
 	return &Broker{
 		Database: db,
+		Mutex:    &sync.Mutex{},
 	}
 }
 
@@ -73,6 +76,10 @@ var (
 	ErrKeyIsEmpty       = errors.New("key is empty")
 	ErrNoKeyFound       = errors.New("no key found")
 )
+
+func (b *Broker) Ping() error {
+	return b.Database.Ping()
+}
 
 // AddKey: Add a new queue name to the broker
 func (b *Broker) AddKey(name string, isMaster bool) error {
@@ -131,11 +138,19 @@ func (b *Broker) KeyPush(name string, value []byte) error {
 	key := ""
 	err := b.Database.QueryRow("SELECT name FROM queues WHERE name = $1", name).Scan(&key)
 	if err == sql.ErrNoRows {
+		log.WithFields(log.Fields{
+			"name":  name,
+			"value": value,
+		}).Errorf("couldn't push value to the queue: %s", err)
 		return ErrKeyNotExists
 	}
 
 	_, err = b.Database.Exec("INSERT INTO "+name+" (value) VALUES ($1)", value)
 	if err != nil {
+		log.WithFields(log.Fields{
+			"name":  name,
+			"value": value,
+		}).Errorf("couldn't push value to the queue: %s", err)
 		return err
 	}
 	return nil
@@ -143,6 +158,7 @@ func (b *Broker) KeyPush(name string, value []byte) error {
 
 // KeyPop: Pop a value from a queue
 func (b *Broker) KeyPop(name string) ([]byte, error) {
+
 	// check queue exist
 	key := ""
 	err := b.Database.QueryRow("SELECT name FROM queues WHERE name = $1", name).Scan(&key)
@@ -168,13 +184,18 @@ func (b *Broker) KeyPop(name string) ([]byte, error) {
 
 // Front: Get the front value of any key that is a master and not empty
 func (b *Broker) Front() (string, []byte, error) {
+	b.Mutex.Lock()
+	defer b.Mutex.Unlock()
+
 	rows, err := b.Database.Query("SELECT name FROM queues WHERE is_master = true")
 	if errors.Is(err, sql.ErrNoRows) {
 		log.WithFields(log.Fields{
 			"master": true,
 		}).Infof("No master key found: %s", err.Error())
-
-		return "", nil, ErrNoKeyFound
+		return "", nil, nil
+	}
+	if err != nil {
+		return "", nil, err
 	}
 
 	for rows.Next() {
@@ -194,6 +215,10 @@ func (b *Broker) Front() (string, []byte, error) {
 		if err != nil {
 			continue
 		}
+		_, err := b.KeyPop(name)
+		if err != nil {
+			return "", nil, err
+		}
 		return name, value, nil
 	}
 	return "", nil, ErrNoKeyFound
@@ -201,6 +226,11 @@ func (b *Broker) Front() (string, []byte, error) {
 
 // Import: Add a key and push values to it
 func (b *Broker) Import(name string, isMaster bool, values [][]byte) error {
+	log.WithFields(log.Fields{
+		"key":    name,
+		"master": isMaster,
+		"values": values,
+	}).Info("Import a new key to the broker")
 	err := b.AddKey(name, isMaster)
 	if err != nil {
 		return err
@@ -239,6 +269,14 @@ func (b *Broker) Export(name string) ([][]byte, error) {
 			return nil, err
 		}
 		values = append(values, value)
+	}
+
+	// delete all values
+	b.Database.Exec("DROP TABLE " + name)
+	b.Database.Exec("DELETE FROM queues WHERE name = $1", name)
+
+	if err != nil {
+		return nil, err
 	}
 	return values, nil
 }
