@@ -83,6 +83,9 @@ func (b *Broker) Ping() error {
 
 // AddKey: Add a new queue name to the broker
 func (b *Broker) AddKey(name string, isMaster bool) error {
+	b.Mutex.Lock()
+	defer b.Mutex.Unlock()
+
 	log.WithFields(log.Fields{
 		"key":    name,
 		"master": isMaster,
@@ -119,6 +122,9 @@ func (b *Broker) AddKey(name string, isMaster bool) error {
 
 // SetKeyMaster: Set the master status of a queue
 func (b *Broker) SetKeyMaster(name string, masterStatus bool) error {
+	b.Mutex.Lock()
+	defer b.Mutex.Unlock()
+
 	key := ""
 	err := b.Database.QueryRow("SELECT name FROM queues WHERE name = $1", name).Scan(&key)
 	if err == sql.ErrNoRows {
@@ -134,7 +140,9 @@ func (b *Broker) SetKeyMaster(name string, masterStatus bool) error {
 
 // KeyPush: Push a value to a queue
 func (b *Broker) KeyPush(name string, value []byte) error {
-	// check queue not exists
+	b.Mutex.Lock()
+	defer b.Mutex.Unlock()
+
 	key := ""
 	err := b.Database.QueryRow("SELECT name FROM queues WHERE name = $1", name).Scan(&key)
 	if err == sql.ErrNoRows {
@@ -158,7 +166,8 @@ func (b *Broker) KeyPush(name string, value []byte) error {
 
 // KeyPop: Pop a value from a queue
 func (b *Broker) KeyPop(name string) ([]byte, error) {
-
+	b.Mutex.Lock()
+	defer b.Mutex.Unlock()
 	// check queue exist
 	key := ""
 	err := b.Database.QueryRow("SELECT name FROM queues WHERE name = $1", name).Scan(&key)
@@ -188,6 +197,8 @@ func (b *Broker) Front() (string, []byte, error) {
 	defer b.Mutex.Unlock()
 
 	rows, err := b.Database.Query("SELECT name FROM queues WHERE is_master = true")
+	defer rows.Close()
+
 	if errors.Is(err, sql.ErrNoRows) {
 		log.WithFields(log.Fields{
 			"master": true,
@@ -215,7 +226,7 @@ func (b *Broker) Front() (string, []byte, error) {
 		if err != nil {
 			continue
 		}
-		_, err := b.KeyPop(name)
+		_, err = b.Database.Exec("DELETE FROM "+name+" WHERE id = $1", id)
 		if err != nil {
 			return "", nil, err
 		}
@@ -246,6 +257,9 @@ func (b *Broker) Import(name string, isMaster bool, values [][]byte) error {
 
 // Export: Get all elements from a key
 func (b *Broker) Export(name string) ([][]byte, error) {
+	b.Mutex.Lock()
+	defer b.Mutex.Unlock()
+
 	// check queue exist
 	key := ""
 	err := b.Database.QueryRow("SELECT name FROM queues WHERE name = $1", name).Scan(&key)
@@ -255,10 +269,11 @@ func (b *Broker) Export(name string) ([][]byte, error) {
 
 	// get all values in order of id
 	rows, err := b.Database.Query("SELECT value FROM " + name + " ORDER BY id")
+	defer rows.Close()
+
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 
 	// get all values
 	var values [][]byte
