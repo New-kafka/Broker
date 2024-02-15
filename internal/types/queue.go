@@ -18,7 +18,7 @@ type ExportRequest struct {
 }
 
 type ImportRequest struct {
-	Key      string   `json:"key"`
-	Data     [][]byte `json:"data"`
-	IsMaster bool     `json:"isMaster"`
+	Key      string   `json:"key" binding:"required"`
+	Values   [][]byte `json:"values"`
+	IsMaster bool     `json:"isMaster" binding:"required"`
 }
