@@ -6,6 +6,7 @@ import (
 	"github.com/new-kafka/broker/internal/types"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
+	"github.com/zsais/go-gin-prometheus"
 )
 
 type GinServer struct {
@@ -18,6 +19,11 @@ func NewGinServer(broker *broker.Broker) *GinServer {
 		broker: broker,
 		gin:    gin.Default(),
 	}
+
+	name := viper.GetString("name")
+	p := ginprometheus.NewPrometheus(name)
+	p.Use(gs.gin)
+
 	gs.registerRoutes()
 	return gs
 }
